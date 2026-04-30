@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "MfmeFmlDecoder": {
+      "commandName": "Project",
+      "commandLineArgs": "../../../test/data/Alpha/0_no_reverse_2.fml"
+    },
+    "Profile 1": {
+      "commandName": "Executable"
+    }
+  }
+}

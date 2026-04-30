@@ -1,0 +1,15 @@
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.AssemblyInfoInputs.cache
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.AssemblyInfo.cs
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.csproj.CoreCompileInputs.cache
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.sourcelink.json
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\bin\Debug\net8.0\MfmeFmlDecoder.exe
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\bin\Debug\net8.0\MfmeFmlDecoder.deps.json
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\bin\Debug\net8.0\MfmeFmlDecoder.runtimeconfig.json
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\bin\Debug\net8.0\MfmeFmlDecoder.dll
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\bin\Debug\net8.0\MfmeFmlDecoder.pdb
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.dll
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\refint\MfmeFmlDecoder.dll
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.pdb
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\MfmeFmlDecoder.genruntimeconfig.cache
+C:\Users\paulm\Projects\Oasis\MonoProjects\MFME_FML_Decoder\obj\Debug\net8.0\ref\MfmeFmlDecoder.dll

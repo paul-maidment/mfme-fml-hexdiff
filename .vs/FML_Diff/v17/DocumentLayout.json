@@ -1,0 +1,36 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Users\\paulm\\Projects\\MonoProjects\\FML_Diff\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{4DDE5F62-3CF3-414D-89CD-4441C08F32C2}|FmlDiff.csproj|c:\\users\\paulm\\projects\\monoprojects\\fml_diff\\fmldiff.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
+      "RelativeMoniker": "D:0:0:{4DDE5F62-3CF3-414D-89CD-4441C08F32C2}|FmlDiff.csproj|solutionrelative:fmldiff.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "FmlDiff",
+              "DocumentMoniker": "C:\\Users\\paulm\\Projects\\MonoProjects\\FML_Diff\\FmlDiff.csproj",
+              "RelativeDocumentMoniker": "FmlDiff.csproj",
+              "ToolTip": "C:\\Users\\paulm\\Projects\\MonoProjects\\FML_Diff\\FmlDiff.csproj",
+              "RelativeToolTip": "FmlDiff.csproj",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
+              "WhenOpened": "2026-04-30T20:37:37.058Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
