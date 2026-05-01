@@ -26,7 +26,7 @@
     </Style>
   </Window.Styles>
 
-  <Grid RowDefinitions="Auto,Auto,*,220">
+  <Grid RowDefinitions="Auto,Auto,*">
     <Border Grid.Row="0"
             BorderBrush="#404040"
             BorderThickness="0,0,0,1"
@@ -210,53 +210,5 @@
       </Border>
     </Grid>
 
-    <Border Grid.Row="3"
-            Margin="10,0,10,10"
-            BorderBrush="#404040"
-            BorderThickness="1">
-      <Grid RowDefinitions="Auto,*">
-        <Border BorderBrush="#404040"
-                BorderThickness="0,0,0,1"
-                Padding="8,6">
-          <TextBlock FontWeight="Bold" Text="Byte Differences" />
-        </Border>
-
-        <Grid Grid.Row="1" RowDefinitions="Auto,*">
-          <Grid ColumnDefinitions="140,120,120"
-                Margin="8,6"
-                ColumnSpacing="8">
-            <TextBlock Grid.Column="0" FontWeight="Bold" Text="Offset" />
-            <TextBlock Grid.Column="1" FontWeight="Bold" Text="A" />
-            <TextBlock Grid.Column="2" FontWeight="Bold" Text="B" />
-          </Grid>
-
-          <ListBox Grid.Row="1"
-                   ItemsSource="{Binding Differences}"
-                   Background="#171C26"
-                   BorderThickness="0">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:ByteDifferenceViewModel">
-                <Grid ColumnDefinitions="140,120,120"
-                      Margin="8,2"
-                      ColumnSpacing="8">
-                  <TextBlock Grid.Column="0"
-                             FontFamily="Consolas"
-                             Foreground="#E8EAF0"
-                             Text="{Binding OffsetText}" />
-                  <TextBlock Grid.Column="1"
-                             FontFamily="Consolas"
-                             Foreground="#E8EAF0"
-                             Text="{Binding LeftHex}" />
-                  <TextBlock Grid.Column="2"
-                             FontFamily="Consolas"
-                             Foreground="#E8EAF0"
-                             Text="{Binding RightHex}" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Grid>
-      </Grid>
-    </Border>
   </Grid>
 </Window>

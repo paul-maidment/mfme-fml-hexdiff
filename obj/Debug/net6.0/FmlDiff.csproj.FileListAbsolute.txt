@@ -69,4 +69,4 @@ C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\refint\FmlDiff.dl
 C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\FmlDiff.pdb
 C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\FmlDiff.genruntimeconfig.cache
 C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\ref\FmlDiff.dll
-C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\FmlDiff.csproj.CopyComplete
+C:\Users\paulm\Projects\MonoProjects\FML_Diff\obj\Debug\net6.0\FmlDiff.csproj.Up2Date
