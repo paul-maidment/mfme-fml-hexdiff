@@ -130,7 +130,7 @@ public sealed class HexDiffEngine
         // k = -d, -d+2, ..., d (one entry per reachable diagonal at step d).
         // Mapping:  trace[d][(k + d) / 2]  =  V[k]
         // Total entries across all steps: 1+2+...+(D+1) = O(D²).
-        var trace = new int[dMax][];
+        var trace = new int[dMax + 1][];
 
         int foundD = -1;
 

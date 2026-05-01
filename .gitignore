@@ -1,0 +1,24 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.rsuser
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# MSBuild logs
+*.binlog
+
+# Visual Studio local history
+.localhistory/
+.vshistory/
+
+# Build output
+[Bb]in/
+[Oo]bj/
