@@ -88,27 +88,44 @@ public sealed class HexDiffEngine
                 continue;
             }
 
-            int resyncDistance = FindResyncDistance(leftBytes, leftIndex, rightBytes, rightIndex, lookaheadWindow);
-            if (resyncDistance > 0)
-            {
-                byte[] insertedBytes = new byte[resyncDistance];
-                int startB = rightIndex;
+            // Search right stream for current left byte (bytes inserted into right)
+            int resyncRight = FindResyncDistance(rightBytes, rightIndex, left, lookaheadWindow);
+            // Search left stream for current right byte (bytes inserted into left / deleted from right)
+            int resyncLeft = FindResyncDistance(leftBytes, leftIndex, right, lookaheadWindow);
 
-                for (int i = 0; i < resyncDistance; i++)
+            bool canRight = resyncRight > 0;
+            bool canLeft = resyncLeft > 0;
+
+            if (canRight && (!canLeft || resyncRight <= resyncLeft))
+            {
+                // Gap(s) on left, advance right — bytes were inserted in the right file
+                byte[] insertedBytes = new byte[resyncRight];
+                int startB = rightIndex;
+                for (int i = 0; i < resyncRight; i++)
                 {
                     byte inserted = rightBytes[rightIndex++];
                     insertedBytes[i] = inserted;
                     leftCells.Add(DiffByteCell.Gap());
                     rightCells.Add(DiffByteCell.Inserted(inserted));
                 }
-
                 insertions.Add(new InsertionRecord(leftIndex, startB, insertedBytes));
-                continue;
             }
-
-            unresolvedMismatches++;
-            leftCells.Add(DiffByteCell.Normal(leftBytes[leftIndex++]));
-            rightCells.Add(DiffByteCell.Normal(rightBytes[rightIndex++]));
+            else if (canLeft)
+            {
+                // Gap(s) on right, advance left — bytes were deleted from the right file
+                for (int i = 0; i < resyncLeft; i++)
+                {
+                    byte deleted = leftBytes[leftIndex++];
+                    leftCells.Add(DiffByteCell.Normal(deleted));
+                    rightCells.Add(DiffByteCell.Gap());
+                }
+            }
+            else
+            {
+                unresolvedMismatches++;
+                leftCells.Add(DiffByteCell.Normal(leftBytes[leftIndex++]));
+                rightCells.Add(DiffByteCell.Normal(rightBytes[rightIndex++]));
+            }
         }
 
         return new DiffLayoutResult(leftCells, rightCells, insertions, unresolvedMismatches);
@@ -133,25 +150,19 @@ public sealed class HexDiffEngine
     }
 
     private static int FindResyncDistance(
-        IReadOnlyList<byte> leftBytes,
-        int leftIndex,
-        IReadOnlyList<byte> rightBytes,
-        int rightIndex,
+        IReadOnlyList<byte> searchIn,
+        int searchFrom,
+        byte target,
         int lookaheadWindow)
     {
-        if (lookaheadWindow <= 0 || leftIndex >= leftBytes.Count)
-        {
+        if (lookaheadWindow <= 0)
             return -1;
-        }
 
-        byte target = leftBytes[leftIndex];
-        int maxDistance = Math.Min(lookaheadWindow, rightBytes.Count - rightIndex - 1);
+        int maxDistance = Math.Min(lookaheadWindow, searchIn.Count - searchFrom - 1);
         for (int distance = 1; distance <= maxDistance; distance++)
         {
-            if (rightBytes[rightIndex + distance] == target)
-            {
+            if (searchIn[searchFrom + distance] == target)
                 return distance;
-            }
         }
 
         return -1;

@@ -12,7 +12,7 @@ namespace FmlDiff.ViewModels;
 public sealed class MainWindowViewModel : INotifyPropertyChanged
 {
     private const int BytesPerRow = 16;
-    private const int MaxDifferencesDisplayed = 10000;
+    private const int LookaheadWindow = 128;
 
     private readonly FmlDataLoader _dataLoader;
     private readonly HexDiffEngine _diffEngine;
@@ -23,7 +23,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool _isBusy;
     private int _selectedRowIndex = -1;
     private string _differenceNavigatorText = "No differences loaded.";
-    private List<int> _differenceOffsets = new();
+
+    // Each entry: (visual row index, left-file offset at row start) for rows that contain at least one difference.
+    private List<(int VisualRow, int LeftFileOffset)> _alignedDiffRows = new();
+    private int _currentDifferenceIndex = -1;
 
     public MainWindowViewModel(FmlDataLoader dataLoader, HexDiffEngine diffEngine)
     {
@@ -73,7 +76,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     }
 
     public bool CanRun => !IsBusy;
-    public bool CanNavigate => !IsBusy && _differenceOffsets.Count > 1;
+    public bool CanNavigate => !IsBusy && _alignedDiffRows.Count > 1;
 
     public string DifferenceNavigatorText
     {
@@ -90,9 +93,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public async Task RunDiffAsync()
     {
         if (IsBusy)
-        {
             return;
-        }
 
         if (string.IsNullOrWhiteSpace(FileAPath) || string.IsNullOrWhiteSpace(FileBPath))
         {
@@ -113,53 +114,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 byte[] leftBytes = _dataLoader.LoadCleanedBytes(pathA);
                 byte[] rightBytes = _dataLoader.LoadCleanedBytes(pathB);
 
-                List<int> differenceOffsets = FindDifferenceOffsets(leftBytes, rightBytes);
-                List<HexDumpRowViewModel> leftRows = BuildRows(leftBytes, differenceOffsets);
-                List<HexDumpRowViewModel> rightRows = BuildRows(rightBytes, differenceOffsets);
-                List<ByteDifferenceViewModel> differences = BuildDifferenceRows(leftBytes, rightBytes, differenceOffsets);
+                DiffLayoutResult aligned = new HexDiffEngine().BuildAligned(leftBytes, rightBytes, LookaheadWindow);
 
-                return new DiffComputationResult(leftRows, rightRows, differences, differenceOffsets);
+                var (leftRows, rightRows, diffRows) = BuildAlignedRowPair(aligned.LeftCells, aligned.RightCells);
+
+                return new DiffComputationResult(leftRows, rightRows, diffRows);
             });
 
             LeftRows.Clear();
             foreach (HexDumpRowViewModel row in result.LeftRows)
-            {
                 LeftRows.Add(row);
-            }
 
             RightRows.Clear();
             foreach (HexDumpRowViewModel row in result.RightRows)
-            {
                 RightRows.Add(row);
-            }
 
             Differences.Clear();
-            foreach (ByteDifferenceViewModel diff in result.Differences)
-            {
-                Differences.Add(diff);
-            }
 
-            _differenceOffsets = result.DifferenceOffsets;
+            _alignedDiffRows = result.AlignedDiffRows;
+            _currentDifferenceIndex = -1;
             SelectedRowIndex = -1;
             OnPropertyChanged(nameof(CanNavigate));
 
-            if (_differenceOffsets.Count == 0)
+            if (_alignedDiffRows.Count == 0)
             {
                 DifferenceNavigatorText = "No differences found.";
                 StatusMessage = "No differences found (after tag 0x97 removal).";
             }
             else
             {
-                if (_differenceOffsets.Count > result.Differences.Count)
-                {
-                    StatusMessage = $"Differences found: {_differenceOffsets.Count}. Showing first {result.Differences.Count} in table.";
-                }
-                else
-                {
-                    StatusMessage = $"Differences found: {_differenceOffsets.Count}.";
-                }
-
-                _currentDifferenceIndex = -1;
+                StatusMessage = $"Differences found in {_alignedDiffRows.Count} row(s).";
                 MoveToNextDifference();
             }
         }
@@ -168,7 +152,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             LeftRows.Clear();
             RightRows.Clear();
             Differences.Clear();
-            _differenceOffsets = new List<int>();
+            _alignedDiffRows = new List<(int, int)>();
             DifferenceNavigatorText = "No differences loaded.";
             StatusMessage = $"Error: {ex.Message}";
             OnPropertyChanged(nameof(CanNavigate));
@@ -179,125 +163,159 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    private int _currentDifferenceIndex = -1;
-
     public void MoveToNextDifference()
     {
-        if (_differenceOffsets.Count == 0)
-        {
+        if (_alignedDiffRows.Count == 0)
             return;
-        }
 
-        _currentDifferenceIndex = (_currentDifferenceIndex + 1) % _differenceOffsets.Count;
+        _currentDifferenceIndex = (_currentDifferenceIndex + 1) % _alignedDiffRows.Count;
         NavigateToCurrentDifference();
     }
 
     public void MoveToPreviousDifference()
     {
-        if (_differenceOffsets.Count == 0)
-        {
+        if (_alignedDiffRows.Count == 0)
             return;
-        }
 
-        _currentDifferenceIndex = (_currentDifferenceIndex - 1 + _differenceOffsets.Count) % _differenceOffsets.Count;
+        _currentDifferenceIndex = (_currentDifferenceIndex - 1 + _alignedDiffRows.Count) % _alignedDiffRows.Count;
         NavigateToCurrentDifference();
     }
 
     private void NavigateToCurrentDifference()
     {
-        if (_currentDifferenceIndex < 0 || _currentDifferenceIndex >= _differenceOffsets.Count)
-        {
+        if (_currentDifferenceIndex < 0 || _currentDifferenceIndex >= _alignedDiffRows.Count)
             return;
-        }
 
-        int offset = _differenceOffsets[_currentDifferenceIndex];
-        int row = offset / BytesPerRow;
-        SelectedRowIndex = row;
-        DifferenceNavigatorText = $"Difference {_currentDifferenceIndex + 1}/{_differenceOffsets.Count} at 0x{offset:X8}";
-        ScrollToRowRequested?.Invoke(row);
+        var (visualRow, leftFileOffset) = _alignedDiffRows[_currentDifferenceIndex];
+        SelectedRowIndex = visualRow;
+        DifferenceNavigatorText = $"Difference {_currentDifferenceIndex + 1}/{_alignedDiffRows.Count} at 0x{leftFileOffset:X8}";
+        ScrollToRowRequested?.Invoke(visualRow);
     }
 
-    private static List<int> FindDifferenceOffsets(IReadOnlyList<byte> leftBytes, IReadOnlyList<byte> rightBytes)
+    /// <summary>
+    /// Builds left and right row lists simultaneously from an aligned cell sequence.
+    /// Gap cells (ByteCellKind.Gap / Empty) render as "--" and do not advance the file offset counter.
+    /// Returns the rows plus a list of visual rows that contain at least one difference.
+    /// </summary>
+    private static (List<HexDumpRowViewModel> leftRows,
+                    List<HexDumpRowViewModel> rightRows,
+                    List<(int VisualRow, int LeftFileOffset)> diffRows)
+        BuildAlignedRowPair(IReadOnlyList<DiffByteCell> leftCells, IReadOnlyList<DiffByteCell> rightCells)
     {
-        int maxLen = Math.Max(leftBytes.Count, rightBytes.Count);
-        var offsets = new List<int>();
+        int totalCells = Math.Max(leftCells.Count, rightCells.Count);
+        int visualRowCount = (totalCells + BytesPerRow - 1) / BytesPerRow;
 
-        for (int i = 0; i < maxLen; i++)
+        var leftRows = new List<HexDumpRowViewModel>(visualRowCount);
+        var rightRows = new List<HexDumpRowViewModel>(visualRowCount);
+        var diffRows = new List<(int, int)>();
+
+        int leftFileOffset = 0;
+        int rightFileOffset = 0;
+
+        for (int rowIndex = 0; rowIndex < visualRowCount; rowIndex++)
         {
-            bool leftExists = i < leftBytes.Count;
-            bool rightExists = i < rightBytes.Count;
-            if (!leftExists || !rightExists || leftBytes[i] != rightBytes[i])
-            {
-                offsets.Add(i);
-            }
-        }
+            int leftRowStart = leftFileOffset;
+            int rightRowStart = rightFileOffset;
+            bool rowHasDiff = false;
 
-        return offsets;
-    }
-
-    private static List<ByteDifferenceViewModel> BuildDifferenceRows(
-        IReadOnlyList<byte> leftBytes,
-        IReadOnlyList<byte> rightBytes,
-        IReadOnlyList<int> differenceOffsets)
-    {
-        int count = Math.Min(differenceOffsets.Count, MaxDifferencesDisplayed);
-        var rows = new List<ByteDifferenceViewModel>(count);
-
-        for (int i = 0; i < count; i++)
-        {
-            int offset = differenceOffsets[i];
-            string left = offset < leftBytes.Count ? leftBytes[offset].ToString("X2") : "--";
-            string right = offset < rightBytes.Count ? rightBytes[offset].ToString("X2") : "--";
-            rows.Add(new ByteDifferenceViewModel(offset, left, right));
-        }
-
-        return rows;
-    }
-
-    private static List<HexDumpRowViewModel> BuildRows(IReadOnlyList<byte> bytes, IReadOnlyList<int> differenceOffsets)
-    {
-        var differenceLookup = new HashSet<int>(differenceOffsets);
-        int rowCount = (bytes.Count + BytesPerRow - 1) / BytesPerRow;
-        var rows = new List<HexDumpRowViewModel>(rowCount);
-
-        for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
-        {
-            int offset = rowIndex * BytesPerRow;
-            var ascii = new StringBuilder(BytesPerRow);
-            var hexCells = new List<HexByteCellViewModel>(BytesPerRow);
+            var leftHexCells = new List<HexByteCellViewModel>(BytesPerRow);
+            var rightHexCells = new List<HexByteCellViewModel>(BytesPerRow);
+            var leftAscii = new StringBuilder(BytesPerRow);
+            var rightAscii = new StringBuilder(BytesPerRow);
 
             for (int i = 0; i < BytesPerRow; i++)
             {
-                int index = offset + i;
-                if (index < bytes.Count)
+                int cellIndex = rowIndex * BytesPerRow + i;
+
+                DiffByteCell lc = cellIndex < leftCells.Count ? leftCells[cellIndex] : DiffByteCell.Empty();
+                DiffByteCell rc = cellIndex < rightCells.Count ? rightCells[cellIndex] : DiffByteCell.Empty();
+
+                bool leftIsGap = lc.Kind is ByteCellKind.Gap or ByteCellKind.Empty;
+                bool rightIsGap = rc.Kind is ByteCellKind.Gap or ByteCellKind.Empty;
+
+                string lBg, lFg, rBg, rFg;
+
+                if (!leftIsGap && !rightIsGap)
                 {
-                    byte b = bytes[index];
-                    bool isDifferent = differenceLookup.Contains(index);
-                    hexCells.Add(new HexByteCellViewModel(
-                        b.ToString("X2"),
-                        isDifferent ? "#B54545" : "Transparent",
-                        isDifferent ? "#FFFFFF" : "#E8EAF0"));
-                    ascii.Append(b >= 32 && b <= 126 ? (char)b : '.');
+                    if (lc.Value == rc.Value)
+                    {
+                        lBg = rBg = "Transparent";
+                        lFg = rFg = "#E8EAF0";
+                    }
+                    else
+                    {
+                        // Substitution — different values at same logical position
+                        lBg = rBg = "#B54545";
+                        lFg = rFg = "#FFFFFF";
+                        rowHasDiff = true;
+                    }
+                }
+                else if (leftIsGap && !rightIsGap)
+                {
+                    // Byte inserted in right file — gap on left, real byte on right
+                    lBg = "Transparent";
+                    lFg = "#3A4560";
+                    rBg = "#5C4A00";
+                    rFg = "#FFD060";
+                    rowHasDiff = true;
+                }
+                else if (!leftIsGap && rightIsGap)
+                {
+                    // Byte deleted from right file — real byte on left, gap on right
+                    lBg = "#5C4A00";
+                    lFg = "#FFD060";
+                    rBg = "Transparent";
+                    rFg = "#3A4560";
+                    rowHasDiff = true;
                 }
                 else
                 {
-                    hexCells.Add(new HexByteCellViewModel("  ", "Transparent", "#7F8798"));
-                    ascii.Append(' ');
+                    // Both empty (tail padding beyond the shorter file)
+                    lBg = rBg = "Transparent";
+                    lFg = rFg = "#7F8798";
+                }
+
+                if (leftIsGap)
+                {
+                    leftHexCells.Add(new HexByteCellViewModel("--", lBg, lFg));
+                    leftAscii.Append(' ');
+                }
+                else
+                {
+                    byte b = lc.Value;
+                    leftHexCells.Add(new HexByteCellViewModel(b.ToString("X2"), lBg, lFg));
+                    leftAscii.Append(b >= 32 && b <= 126 ? (char)b : '.');
+                    leftFileOffset++;
+                }
+
+                if (rightIsGap)
+                {
+                    rightHexCells.Add(new HexByteCellViewModel("--", rBg, rFg));
+                    rightAscii.Append(' ');
+                }
+                else
+                {
+                    byte b = rc.Value;
+                    rightHexCells.Add(new HexByteCellViewModel(b.ToString("X2"), rBg, rFg));
+                    rightAscii.Append(b >= 32 && b <= 126 ? (char)b : '.');
+                    rightFileOffset++;
                 }
             }
 
-            rows.Add(new HexDumpRowViewModel(rowIndex, offset.ToString("X8"), hexCells, ascii.ToString()));
+            leftRows.Add(new HexDumpRowViewModel(rowIndex, leftRowStart.ToString("X8"), leftHexCells, leftAscii.ToString()));
+            rightRows.Add(new HexDumpRowViewModel(rowIndex, rightRowStart.ToString("X8"), rightHexCells, rightAscii.ToString()));
+
+            if (rowHasDiff)
+                diffRows.Add((rowIndex, leftRowStart));
         }
 
-        return rows;
+        return (leftRows, rightRows, diffRows);
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
-        {
             return false;
-        }
 
         field = value;
         OnPropertyChanged(propertyName);
@@ -312,8 +330,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private readonly record struct DiffComputationResult(
         List<HexDumpRowViewModel> LeftRows,
         List<HexDumpRowViewModel> RightRows,
-        List<ByteDifferenceViewModel> Differences,
-        List<int> DifferenceOffsets
+        List<(int VisualRow, int LeftFileOffset)> AlignedDiffRows
     );
 }
 
