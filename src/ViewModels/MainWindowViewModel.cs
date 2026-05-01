@@ -114,7 +114,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 byte[] leftBytes = _dataLoader.LoadCleanedBytes(pathA);
                 byte[] rightBytes = _dataLoader.LoadCleanedBytes(pathB);
 
-                DiffLayoutResult aligned = new HexDiffEngine().BuildAligned(leftBytes, rightBytes, LookaheadWindow);
+                DiffLayoutResult aligned = _diffEngine.BuildAligned(leftBytes, rightBytes, LookaheadWindow);
 
                 var (leftRows, rightRows, diffRows) = BuildAlignedRowPair(aligned.LeftCells, aligned.RightCells);
 
