@@ -53,7 +53,7 @@ public sealed class FmlDataLoader
         string decoderExePath = FindMfmeDecoderExe();
         if (decoderExePath == null)
         {
-            throw new FileNotFoundException("Could not locate lib/mfme_decoder.exe. Expected it relative to the app folder or current working directory.");
+            throw new FileNotFoundException("Could not locate lib/mfme_decryptor.exe. Expected it relative to the app folder or current working directory.");
         }
 
         string tempDir = Path.Combine(Path.GetTempPath(), "MfmeFmlDecoder", Guid.NewGuid().ToString("N"));
@@ -96,7 +96,7 @@ public sealed class FmlDataLoader
         using var proc = Process.Start(psi);
         if (proc == null)
         {
-            throw new InvalidOperationException("Failed to start mfme_decoder.exe process.");
+            throw new InvalidOperationException("Failed to start mfme_decryptor.exe process.");
         }
 
         string stdout = proc.StandardOutput.ReadToEnd();
@@ -113,13 +113,13 @@ public sealed class FmlDataLoader
                 // Best effort only.
             }
 
-            throw new TimeoutException("mfme_decoder.exe timed out after 60 seconds.");
+            throw new TimeoutException("mfme_decryptor.exe timed out after 60 seconds.");
         }
 
         if (proc.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"mfme_decoder.exe failed with exit code {proc.ExitCode}.{Environment.NewLine}" +
+                $"mfme_decryptor.exe failed with exit code {proc.ExitCode}.{Environment.NewLine}" +
                 (string.IsNullOrWhiteSpace(stdout) ? string.Empty : $"stdout:{Environment.NewLine}{stdout}{Environment.NewLine}") +
                 (string.IsNullOrWhiteSpace(stderr) ? string.Empty : $"stderr:{Environment.NewLine}{stderr}{Environment.NewLine}")
             );
@@ -130,8 +130,8 @@ public sealed class FmlDataLoader
     {
         string[] directCandidates =
         {
-            Path.Combine(AppContext.BaseDirectory, "lib", "mfme_decoder.exe"),
-            Path.Combine(Directory.GetCurrentDirectory(), "lib", "mfme_decoder.exe")
+            Path.Combine(AppContext.BaseDirectory, "lib", "mfme_decryptor.exe"),
+            Path.Combine(Directory.GetCurrentDirectory(), "lib", "mfme_decryptor.exe")
         };
 
         foreach (string candidate in directCandidates)
@@ -145,7 +145,7 @@ public sealed class FmlDataLoader
         DirectoryInfo directory = new DirectoryInfo(AppContext.BaseDirectory);
         for (int i = 0; i < 6 && directory != null; i++)
         {
-            string candidate = Path.Combine(directory.FullName, "lib", "mfme_decoder.exe");
+            string candidate = Path.Combine(directory.FullName, "lib", "mfme_decryptor.exe");
             if (File.Exists(candidate))
             {
                 return candidate;

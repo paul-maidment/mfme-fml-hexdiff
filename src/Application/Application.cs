@@ -116,7 +116,7 @@ namespace MfmeFmlDecoder.Application
             string decoderExePath = FindMfmeDecoderExe();
             if (decoderExePath == null)
             {
-                throw new FileNotFoundException("Could not locate lib/mfme_decoder.exe. Expected it relative to the app folder or current working directory.");
+                throw new FileNotFoundException("Could not locate lib/mfme_decryptor.exe. Expected it relative to the app folder or current working directory.");
             }
 
             string tempDir = Path.Combine(Path.GetTempPath(), "MfmeFmlDecoder", Guid.NewGuid().ToString("N"));
@@ -160,7 +160,7 @@ namespace MfmeFmlDecoder.Application
             {
                 if (proc == null)
                 {
-                    throw new InvalidOperationException("Failed to start mfme_decoder.exe process.");
+                    throw new InvalidOperationException("Failed to start mfme_decryptor.exe process.");
                 }
 
                 string stdout = proc.StandardOutput.ReadToEnd();
@@ -170,13 +170,13 @@ namespace MfmeFmlDecoder.Application
                 if (!proc.WaitForExit(60_000))
                 {
                     try { proc.Kill(entireProcessTree: true); } catch { }
-                    throw new TimeoutException("mfme_decoder.exe timed out after 60 seconds.");
+                    throw new TimeoutException("mfme_decryptor.exe timed out after 60 seconds.");
                 }
 
                 if (proc.ExitCode != 0)
                 {
                     throw new InvalidOperationException(
-                        $"mfme_decoder.exe failed with exit code {proc.ExitCode}.{Environment.NewLine}" +
+                        $"mfme_decryptor.exe failed with exit code {proc.ExitCode}.{Environment.NewLine}" +
                         (string.IsNullOrWhiteSpace(stdout) ? "" : $"stdout:{Environment.NewLine}{stdout}{Environment.NewLine}") +
                         (string.IsNullOrWhiteSpace(stderr) ? "" : $"stderr:{Environment.NewLine}{stderr}{Environment.NewLine}")
                     );
@@ -187,13 +187,13 @@ namespace MfmeFmlDecoder.Application
         private static string FindMfmeDecoderExe()
         {
             // Try common locations:
-            // - next to build output: <base>/lib/mfme_decoder.exe
-            // - current working directory: <cwd>/lib/mfme_decoder.exe
-            // - walk upwards from base dir a few levels looking for lib/mfme_decoder.exe (useful when running from bin/Debug/...).
+            // - next to build output: <base>/lib/mfme_decryptor.exe
+            // - current working directory: <cwd>/lib/mfme_decryptor.exe
+            // - walk upwards from base dir a few levels looking for lib/mfme_decryptor.exe (useful when running from bin/Debug/...).
             string[] directCandidates =
             {
-                Path.Combine(AppContext.BaseDirectory, "lib", "mfme_decoder.exe"),
-                Path.Combine(Directory.GetCurrentDirectory(), "lib", "mfme_decoder.exe")
+                Path.Combine(AppContext.BaseDirectory, "lib", "mfme_decryptor.exe"),
+                Path.Combine(Directory.GetCurrentDirectory(), "lib", "mfme_decryptor.exe")
             };
 
             foreach (var c in directCandidates)
@@ -204,7 +204,7 @@ namespace MfmeFmlDecoder.Application
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             for (int i = 0; i < 6 && dir != null; i++)
             {
-                string candidate = Path.Combine(dir.FullName, "lib", "mfme_decoder.exe");
+                string candidate = Path.Combine(dir.FullName, "lib", "mfme_decryptor.exe");
                 if (File.Exists(candidate)) return candidate;
                 dir = dir.Parent;
             }
