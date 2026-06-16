@@ -22,3 +22,4 @@ _ReSharper*/
 # Build output
 [Bb]in/
 [Oo]bj/
+dist/
