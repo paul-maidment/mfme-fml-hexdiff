@@ -35,10 +35,27 @@ namespace MfmeFmlDecoder.Decoder
                 throw new FileNotFoundException(fullInputPath);
             }
 
+            using FileStream fileStream = new FileStream(fullInputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return GetCleanedBytesWithoutTag(fileStream, offset, tagToRemove);
+        }
+
+        public byte[] GetCleanedBytesWithoutTag(byte[] inputBytes, uint offset, uint tagToRemove)
+        {
+            if (inputBytes == null || inputBytes.Length == 0)
+            {
+                throw new ArgumentException("Input data is empty.", nameof(inputBytes));
+            }
+
+            using MemoryStream inputStream = new MemoryStream(inputBytes, writable: false);
+            return GetCleanedBytesWithoutTag(inputStream, offset, tagToRemove);
+        }
+
+        private byte[] GetCleanedBytesWithoutTag(Stream inputStream, uint offset, uint tagToRemove)
+        {
             byte[] prefixBytes;
             List<TlvRecord> records;
             byte[] componentsBytes;
-            ReadRecords(fullInputPath, offset, out prefixBytes, out records, out componentsBytes);
+            ReadRecords(inputStream, offset, out prefixBytes, out records, out componentsBytes);
 
             using var output = new MemoryStream();
             using var writer = new BinaryWriter(output);
@@ -93,11 +110,34 @@ namespace MfmeFmlDecoder.Decoder
                 throw new FileNotFoundException(fullInputPath);
             }
 
+            using FileStream fileStream = new FileStream(fullInputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return WriteCleanedFileWithoutTag(fileStream, fullOutputPath, offset, tagToRemove);
+        }
+
+        public TlvWalkResult WriteCleanedFileWithoutTag(byte[] inputBytes, string outputPath, uint offset, uint tagToRemove)
+        {
+            if (inputBytes == null || inputBytes.Length == 0)
+            {
+                throw new ArgumentException("Input data is empty.", nameof(inputBytes));
+            }
+
+            if (string.IsNullOrWhiteSpace(outputPath))
+            {
+                throw new ArgumentException("Output path is empty.", nameof(outputPath));
+            }
+
+            string fullOutputPath = Path.GetFullPath(outputPath);
+            using MemoryStream inputStream = new MemoryStream(inputBytes, writable: false);
+            return WriteCleanedFileWithoutTag(inputStream, fullOutputPath, offset, tagToRemove);
+        }
+
+        private TlvWalkResult WriteCleanedFileWithoutTag(Stream inputStream, string fullOutputPath, uint offset, uint tagToRemove)
+        {
             int removed = 0;
             byte[] prefixBytes;
             List<TlvRecord> records;
             byte[] componentsBytes;
-            ReadRecords(fullInputPath, offset, out prefixBytes, out records, out componentsBytes);
+            ReadRecords(inputStream, offset, out prefixBytes, out records, out componentsBytes);
 
             using (FileStream outputStream = new FileStream(fullOutputPath, FileMode.Create, FileAccess.Write, FileShare.None))
             using (BinaryWriter writer = new BinaryWriter(outputStream))
@@ -134,26 +174,25 @@ namespace MfmeFmlDecoder.Decoder
             return new TlvWalkResult(records.Count, removed, fullOutputPath);
         }
 
-        private static void ReadRecords(string fullInputPath, uint offset, out byte[] prefixBytes, out List<TlvRecord> records, out byte[] componentsBytes)
+        private static void ReadRecords(Stream inputStream, uint offset, out byte[] prefixBytes, out List<TlvRecord> records, out byte[] componentsBytes)
         {
             records = new List<TlvRecord>();
             bool foundTerminationTag = false;
 
-            using FileStream fileStream = new FileStream(fullInputPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using BinaryReader reader = new BinaryReader(fileStream);
+            using BinaryReader reader = new BinaryReader(inputStream, System.Text.Encoding.UTF8, leaveOpen: true);
 
-            if (offset > fileStream.Length)
+            if (offset > inputStream.Length)
             {
                 throw new InvalidOperationException(
-                    $"Offset 0x{offset:X} is beyond file length 0x{fileStream.Length:X}."
+                    $"Offset 0x{offset:X} is beyond file length 0x{inputStream.Length:X}."
                 );
             }
 
             prefixBytes = reader.ReadBytes(checked((int)offset));
 
-            while (fileStream.Position < fileStream.Length)
+            while (inputStream.Position < inputStream.Length)
             {
-                long recordStartOffset = fileStream.Position;
+                long recordStartOffset = inputStream.Position;
                 uint tag = reader.ReadUInt32();
                 uint length = reader.ReadUInt32();
                 byte[] values = reader.ReadBytes(checked((int)length));
@@ -193,7 +232,7 @@ namespace MfmeFmlDecoder.Decoder
                 );
             }
 
-            long remaining = fileStream.Length - fileStream.Position;
+            long remaining = inputStream.Length - inputStream.Position;
             componentsBytes = reader.ReadBytes(checked((int)remaining));
         }
     }
