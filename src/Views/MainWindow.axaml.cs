@@ -4,10 +4,12 @@ using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using FmlDiff.Services;
 using FmlDiff.ViewModels;
 
 namespace FmlDiff.Views;
@@ -19,11 +21,14 @@ public partial class MainWindow : Window
     private ScrollViewer _leftScrollViewer;
     private ScrollViewer _rightScrollViewer;
     private MainWindowViewModel _attachedViewModel;
+    private HexByteSelectionBehavior _leftByteSelection;
+    private HexByteSelectionBehavior _rightByteSelection;
 
     public MainWindow()
     {
         InitializeComponent();
         Opened += OnOpened;
+        KeyDown += OnWindowKeyDown;
     }
 
     private MainWindowViewModel ViewModel => (MainWindowViewModel)DataContext!;
@@ -33,12 +38,14 @@ public partial class MainWindow : Window
         if (_attachedViewModel != null)
         {
             _attachedViewModel.ScrollToRowRequested -= OnScrollToRowRequested;
+            _attachedViewModel.SearchHighlightChanged -= OnSearchHighlightChanged;
         }
 
         _attachedViewModel = DataContext as MainWindowViewModel;
         if (_attachedViewModel != null)
         {
             _attachedViewModel.ScrollToRowRequested += OnScrollToRowRequested;
+            _attachedViewModel.SearchHighlightChanged += OnSearchHighlightChanged;
         }
 
         base.OnDataContextChanged(e);
@@ -61,6 +68,101 @@ public partial class MainWindow : Window
 
         LeftListBox.SelectionChanged += OnListSelectionChanged;
         RightListBox.SelectionChanged += OnListSelectionChanged;
+
+        HexDiffPaneProperties.ByteSelectionBegan += OnByteSelectionBegan;
+
+        _leftByteSelection = new HexByteSelectionBehavior(LeftListBox, OnByteSelectionVisualChanged);
+        _rightByteSelection = new HexByteSelectionBehavior(RightListBox, OnByteSelectionVisualChanged);
+
+        LeftListBox.Focusable = true;
+        RightListBox.Focusable = true;
+    }
+
+    private void OnByteSelectionBegan(ListBox source)
+    {
+        ListBox other = source == LeftListBox ? RightListBox : LeftListBox;
+        HexDiffPaneProperties.ClearByteSelection(other);
+        SetRowSelectionSuppressedVisual(true);
+        OnByteSelectionVisualChanged();
+    }
+
+    private void SetRowSelectionSuppressedVisual(bool suppressed)
+    {
+        LeftListBox.Classes.Set("row-selection-suppressed", suppressed);
+        RightListBox.Classes.Set("row-selection-suppressed", suppressed);
+        HexDiffPaneProperties.SetRowSelectionSuppressed(LeftListBox, suppressed);
+        HexDiffPaneProperties.SetRowSelectionSuppressed(RightListBox, suppressed);
+    }
+
+    private void OnByteSelectionVisualChanged()
+    {
+        HexDiffPaneProperties.RefreshVisibleRows(LeftListBox);
+        HexDiffPaneProperties.RefreshVisibleRows(RightListBox);
+    }
+
+    private async void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            if (await TryCopyByteSelectionAsync())
+                e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            if (ClearActiveByteSelection())
+                e.Handled = true;
+        }
+    }
+
+    private async Task<bool> TryCopyByteSelectionAsync()
+    {
+        HexDiffPresentation presentation = ViewModel.Presentation;
+        if (presentation == null)
+            return false;
+
+        ListBox activeListBox = null;
+        string hexText = string.Empty;
+
+        if (HexDiffPaneProperties.GetByteSelectionActive(LeftListBox))
+        {
+            activeListBox = LeftListBox;
+            hexText = HexByteSelectionBehavior.GetSelectionHexText(LeftListBox, presentation);
+        }
+        else if (HexDiffPaneProperties.GetByteSelectionActive(RightListBox))
+        {
+            activeListBox = RightListBox;
+            hexText = HexByteSelectionBehavior.GetSelectionHexText(RightListBox, presentation);
+        }
+
+        if (activeListBox == null || string.IsNullOrEmpty(hexText))
+            return false;
+
+        if (Clipboard == null)
+            return false;
+
+        await Clipboard.SetTextAsync(hexText);
+
+        HexDiffPaneProperties.ClearByteSelection(LeftListBox);
+        HexDiffPaneProperties.ClearByteSelection(RightListBox);
+        SetRowSelectionSuppressedVisual(false);
+        OnByteSelectionVisualChanged();
+
+        return true;
+    }
+
+    private bool ClearActiveByteSelection()
+    {
+        bool hadSelection = HexDiffPaneProperties.GetByteSelectionActive(LeftListBox)
+            || HexDiffPaneProperties.GetByteSelectionActive(RightListBox);
+
+        if (!hadSelection)
+            return false;
+
+        _leftByteSelection.ClearSelection();
+        _rightByteSelection.ClearSelection();
+        SetRowSelectionSuppressedVisual(false);
+        OnByteSelectionVisualChanged();
+        return true;
     }
 
     private void OnListSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -100,6 +202,25 @@ public partial class MainWindow : Window
     private void NextDifferenceClick(object sender, RoutedEventArgs e)
     {
         ViewModel.MoveToNextDifference();
+    }
+
+    private void FindNextSearchClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.MoveToNextSearchMatch();
+    }
+
+    private void FindPreviousSearchClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel.MoveToPreviousSearchMatch();
+    }
+
+    private void OnSearchHighlightChanged()
+    {
+        bool onLeft = ViewModel.SearchHighlightOnLeftPane;
+        HexDiffPaneProperties.SetSearchHighlightActive(LeftListBox, onLeft);
+        HexDiffPaneProperties.SetSearchHighlightActive(RightListBox, !onLeft);
+        HexDiffPaneProperties.RefreshVisibleRows(LeftListBox);
+        HexDiffPaneProperties.RefreshVisibleRows(RightListBox);
     }
 
     private void OnScrollToRowRequested(int row)

@@ -45,6 +45,7 @@ public sealed class HexDumpRowControl : UserControl
             {
                 Padding = new Thickness(1, 0),
                 Height = 20,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Ibeam),
                 Child = text
             };
 
@@ -129,6 +130,7 @@ public sealed class HexDumpRowControl : UserControl
 
         var ascii = new StringBuilder(16);
         int cellBase = rowIndex * 16;
+        ListBox listBox = this.FindAncestorOfType<ListBox>();
 
         for (int i = 0; i < 16; i++)
         {
@@ -144,6 +146,17 @@ public sealed class HexDumpRowControl : UserControl
                 _hexTexts[i],
                 out char asciiChar);
 
+            if (IsByteSelected(cellIndex, listBox))
+            {
+                _hexBorders[i].Background = HexDiffTheme.ByteSelectionBackground;
+                _hexTexts[i].Foreground = HexDiffTheme.ByteSelectionForeground;
+            }
+            else if (IsSearchHighlighted(cellIndex, listBox))
+            {
+                _hexBorders[i].Background = HexDiffTheme.SearchHighlightBackground;
+                _hexTexts[i].Foreground = HexDiffTheme.SearchHighlightForeground;
+            }
+
             ascii.Append(asciiChar);
         }
 
@@ -155,7 +168,10 @@ public sealed class HexDumpRowControl : UserControl
     {
         ListBox listBox = this.FindAncestorOfType<ListBox>();
         int rowIndex = DataContext is int index ? index : -1;
-        bool isSelected = listBox != null && rowIndex >= 0 && listBox.SelectedIndex == rowIndex;
+        bool isSelected = listBox != null
+            && rowIndex >= 0
+            && listBox.SelectedIndex == rowIndex
+            && !HexDiffPaneProperties.GetRowSelectionSuppressed(listBox);
 
         if (isSelected)
         {
@@ -187,6 +203,69 @@ public sealed class HexDumpRowControl : UserControl
         presentation = HexDiffPaneProperties.GetPresentation(listBox);
         isLeft = HexDiffPaneProperties.GetIsLeftPane(listBox);
         return presentation != null && rowIndex >= 0;
+    }
+
+    private static bool IsByteSelected(int cellIndex, ListBox listBox)
+    {
+        if (listBox == null || !HexDiffPaneProperties.GetByteSelectionActive(listBox))
+            return false;
+
+        int? start = HexDiffPaneProperties.GetByteSelectionStart(listBox);
+        int? end = HexDiffPaneProperties.GetByteSelectionEnd(listBox);
+        if (!start.HasValue || !end.HasValue)
+            return false;
+
+        if (!HexByteSelection.IsCellInRange(cellIndex, start.Value, end.Value))
+            return false;
+
+        HexDiffPresentation presentation = HexDiffPaneProperties.GetPresentation(listBox);
+        if (presentation == null)
+            return false;
+
+        DiffByteCell[] cells = HexDiffPaneProperties.GetIsLeftPane(listBox)
+            ? presentation.LeftCells
+            : presentation.RightCells;
+
+        return cellIndex >= 0
+            && cellIndex < cells.Length
+            && cells[cellIndex].HasValue;
+    }
+
+    internal bool TryGetCellIndexFromSource(Visual source, out int cellIndex)
+    {
+        cellIndex = -1;
+        if (source == null || DataContext is not int rowIndex)
+            return false;
+
+        Visual current = source;
+        while (current != null && current != this)
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (current == _hexBorders[i] || _hexBorders[i].IsVisualAncestorOf(current))
+                {
+                    cellIndex = rowIndex * 16 + i;
+                    return true;
+                }
+            }
+
+            current = current.GetVisualParent();
+        }
+
+        return false;
+    }
+
+    private static bool IsSearchHighlighted(int cellIndex, ListBox listBox)
+    {
+        if (listBox == null || !HexDiffPaneProperties.GetSearchHighlightActive(listBox))
+            return false;
+
+        int? start = HexDiffPaneProperties.GetSearchHighlightStart(listBox);
+        int? end = HexDiffPaneProperties.GetSearchHighlightEnd(listBox);
+        if (!start.HasValue || !end.HasValue)
+            return false;
+
+        return cellIndex >= start.Value && cellIndex < end.Value;
     }
 
     private void ClearRow()
@@ -229,6 +308,10 @@ internal static class HexDiffTheme
     public static readonly IBrush InsertDeleteForeground = new SolidColorBrush(Color.Parse("#FFD060"));
     public static readonly IBrush GapForeground = new SolidColorBrush(Color.Parse("#3A4560"));
     public static readonly IBrush EmptyForeground = new SolidColorBrush(Color.Parse("#7F8798"));
+    public static readonly IBrush SearchHighlightBackground = new SolidColorBrush(Color.Parse("#1F6B4A"));
+    public static readonly IBrush SearchHighlightForeground = new SolidColorBrush(Color.Parse("#B8F5D4"));
+    public static readonly IBrush ByteSelectionBackground = new SolidColorBrush(Color.Parse("#3D5A9E"));
+    public static readonly IBrush ByteSelectionForeground = new SolidColorBrush(Color.Parse("#FFFFFF"));
 
     public static void ApplyCellStyle(
         DiffByteCell cell,

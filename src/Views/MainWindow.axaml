@@ -29,6 +29,10 @@
       <Setter Property="Background" Value="#2E5FA8" />
       <Setter Property="Foreground" Value="#FFFFFF" />
     </Style>
+    <Style Selector="ListBox.row-selection-suppressed ListBoxItem:selected">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="#E8EAF0" />
+    </Style>
   </Window.Styles>
 
   <Grid RowDefinitions="Auto,Auto,*">
@@ -81,6 +85,41 @@
                      Foreground="#C7CDD8"
                      Text="Changed bytes are highlighted in red" />
         </Grid>
+
+        <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto"
+              ColumnSpacing="8">
+          <TextBlock VerticalAlignment="Center"
+                     Foreground="#E8EAF0"
+                     Text="Search" />
+          <ComboBox Grid.Column="1"
+                    Width="90"
+                    SelectedIndex="{Binding SearchPaneIndex}">
+            <ComboBoxItem Content="Pane A" />
+            <ComboBoxItem Content="Pane B" />
+          </ComboBox>
+          <ComboBox Grid.Column="2"
+                    Width="120"
+                    SelectedIndex="{Binding SearchModeIndex}">
+            <ComboBoxItem Content="UTF-8" />
+            <ComboBoxItem Content="UTF-16" />
+            <ComboBoxItem Content="Bytes" />
+          </ComboBox>
+          <TextBox Grid.Column="3"
+                   Watermark="Text or hex bytes (e.g. 05 00 00 00)"
+                   Text="{Binding SearchText}" />
+          <Button Grid.Column="4"
+                  Content="Find Prev"
+                  Click="FindPreviousSearchClick"
+                  IsEnabled="{Binding CanSearchNavigate}" />
+          <Button Grid.Column="5"
+                  Content="Find Next"
+                  Click="FindNextSearchClick"
+                  IsEnabled="{Binding CanSearchNavigate}" />
+          <TextBlock Grid.Column="6"
+                     VerticalAlignment="Center"
+                     Foreground="#E8EAF0"
+                     Text="{Binding SearchNavigatorText}" />
+        </Grid>
       </StackPanel>
     </Border>
 
@@ -122,7 +161,9 @@
                    SelectionMode="Single"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    views:HexDiffPaneProperties.Presentation="{Binding Presentation}"
-                   views:HexDiffPaneProperties.IsLeftPane="True">
+                   views:HexDiffPaneProperties.IsLeftPane="True"
+                   views:HexDiffPaneProperties.SearchHighlightStart="{Binding SearchHighlightStartCellIndex}"
+                   views:HexDiffPaneProperties.SearchHighlightEnd="{Binding SearchHighlightEndCellIndex}">
             <ListBox.ItemsPanel>
               <ItemsPanelTemplate>
                 <VirtualizingStackPanel />
@@ -156,7 +197,9 @@
                    SelectionMode="Single"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    views:HexDiffPaneProperties.Presentation="{Binding Presentation}"
-                   views:HexDiffPaneProperties.IsLeftPane="False">
+                   views:HexDiffPaneProperties.IsLeftPane="False"
+                   views:HexDiffPaneProperties.SearchHighlightStart="{Binding SearchHighlightStartCellIndex}"
+                   views:HexDiffPaneProperties.SearchHighlightEnd="{Binding SearchHighlightEndCellIndex}">
             <ListBox.ItemsPanel>
               <ItemsPanelTemplate>
                 <VirtualizingStackPanel />

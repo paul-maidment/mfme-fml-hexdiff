@@ -51,6 +51,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private int _currentDifferenceIndex = -1;
 
+    private string _searchText = string.Empty;
+    private HexSearchMode _searchMode = HexSearchMode.Utf8;
+    private HexSearchPane _searchPane = HexSearchPane.PaneA;
+    private string _searchNavigatorText = string.Empty;
+    private int? _searchHighlightStartCellIndex;
+    private int? _searchHighlightEndCellIndex;
+    private bool _searchHighlightOnLeftPane;
+
+    private List<HexSearchMatch> _searchMatches = new();
+    private int _currentSearchIndex = -1;
+    private string _lastSearchKey = string.Empty;
+
 
 
     public MainWindowViewModel(FmlDataLoader dataLoader, HexDiffEngine diffEngine)
@@ -73,6 +85,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public event Action<int> ScrollToRowRequested;
 
+    public event Action SearchHighlightChanged;
+
 
 
     public RowIndexList RowIndices { get; }
@@ -87,7 +101,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         get => _presentation;
 
-        private set => SetProperty(ref _presentation, value);
+        private set
+
+        {
+
+            if (SetProperty(ref _presentation, value))
+
+                OnPropertyChanged(nameof(CanSearchNavigate));
+
+        }
 
     }
 
@@ -147,6 +169,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
                 OnPropertyChanged(nameof(CanNavigate));
 
+                OnPropertyChanged(nameof(CanSearchNavigate));
+
             }
 
         }
@@ -194,6 +218,110 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetProperty(ref _selectedRowIndex, value);
 
     }
+
+
+
+    public string SearchText
+
+    {
+
+        get => _searchText;
+
+        set => SetProperty(ref _searchText, value);
+
+    }
+
+
+
+    public int SearchModeIndex
+
+    {
+
+        get => (int)_searchMode;
+
+        set
+
+        {
+
+            if (value < 0 || value > 2)
+
+                return;
+
+            SearchMode = (HexSearchMode)value;
+
+        }
+
+    }
+
+
+
+    public HexSearchMode SearchMode
+
+    {
+
+        get => _searchMode;
+
+        set => SetProperty(ref _searchMode, value);
+
+    }
+
+
+
+    public int SearchPaneIndex
+
+    {
+
+        get => (int)_searchPane;
+
+        set
+
+        {
+
+            if (value < 0 || value > 1)
+
+                return;
+
+            SearchPane = (HexSearchPane)value;
+
+        }
+
+    }
+
+
+
+    public HexSearchPane SearchPane
+
+    {
+
+        get => _searchPane;
+
+        set => SetProperty(ref _searchPane, value);
+
+    }
+
+
+
+    public string SearchNavigatorText
+
+    {
+
+        get => _searchNavigatorText;
+
+        private set => SetProperty(ref _searchNavigatorText, value);
+
+    }
+
+
+
+    public bool CanSearchNavigate => !IsBusy && Presentation != null;
+
+
+
+    public int? SearchHighlightStartCellIndex => _searchHighlightStartCellIndex;
+
+    public int? SearchHighlightEndCellIndex => _searchHighlightEndCellIndex;
+
+    public bool SearchHighlightOnLeftPane => _searchHighlightOnLeftPane;
 
 
 
@@ -284,6 +412,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
             Differences.Clear();
 
+            ClearSearchState();
+
 
 
             _alignedDiffRows = new List<(int, int)>(result.Presentation.DiffRows);
@@ -329,6 +459,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             Differences.Clear();
 
             _alignedDiffRows = new List<(int, int)>();
+
+            ClearSearchState();
 
             DifferenceNavigatorText = "No differences loaded.";
 
@@ -441,6 +573,228 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         DifferenceNavigatorText = $"Difference {_currentDifferenceIndex + 1}/{_alignedDiffRows.Count} at 0x{leftFileOffset:X8}";
 
         ScrollToRowRequested?.Invoke(visualRow);
+
+    }
+
+
+
+    public void MoveToNextSearchMatch()
+
+    {
+
+        if (!EnsureSearchMatches(out string error))
+
+        {
+
+            SearchNavigatorText = error;
+
+            return;
+
+        }
+
+
+
+        _currentSearchIndex = (_currentSearchIndex + 1) % _searchMatches.Count;
+
+        NavigateToCurrentSearchMatch();
+
+    }
+
+
+
+    public void MoveToPreviousSearchMatch()
+
+    {
+
+        if (!EnsureSearchMatches(out string error))
+
+        {
+
+            SearchNavigatorText = error;
+
+            return;
+
+        }
+
+
+
+        _currentSearchIndex = (_currentSearchIndex - 1 + _searchMatches.Count) % _searchMatches.Count;
+
+        NavigateToCurrentSearchMatch();
+
+    }
+
+
+
+    private bool EnsureSearchMatches(out string error)
+
+    {
+
+        error = string.Empty;
+
+        if (Presentation == null)
+
+        {
+
+            error = "Load a diff before searching.";
+
+            ClearSearchHighlight();
+
+            return false;
+
+        }
+
+
+
+        string searchKey = BuildSearchKey();
+
+        if (!string.Equals(searchKey, _lastSearchKey, StringComparison.Ordinal))
+
+        {
+
+            _lastSearchKey = searchKey;
+
+            _searchMatches = new List<HexSearchMatch>();
+
+            _currentSearchIndex = -1;
+
+            ClearSearchHighlight();
+
+
+
+            if (!HexPaneSearcher.TryBuildPattern(SearchText, SearchMode, out byte[] pattern, out error))
+
+                return false;
+
+
+
+            _searchMatches = HexPaneSearcher.FindAll(Presentation, SearchPane, pattern);
+
+            OnPropertyChanged(nameof(CanSearchNavigate));
+
+
+
+            if (_searchMatches.Count == 0)
+
+            {
+
+                error = "No matches found.";
+
+                SearchNavigatorText = error;
+
+                return false;
+
+            }
+
+        }
+
+
+
+        return _searchMatches.Count > 0;
+
+    }
+
+
+
+    private void NavigateToCurrentSearchMatch()
+
+    {
+
+        if (_currentSearchIndex < 0 || _currentSearchIndex >= _searchMatches.Count)
+
+            return;
+
+
+
+        HexSearchMatch match = _searchMatches[_currentSearchIndex];
+
+        DiffByteCell[] cells = SearchPane == HexSearchPane.PaneA
+
+            ? Presentation.LeftCells
+
+            : Presentation.RightCells;
+
+        int startCell = HexPaneSearcher.FileOffsetToCellIndex(cells, match.FileOffset);
+
+        int visualRow = startCell >= 0 ? HexPaneSearcher.CellIndexToVisualRow(startCell) : 0;
+
+        SelectedRowIndex = visualRow;
+
+
+
+        if (HexPaneSearcher.TryMapMatchToCells(Presentation, SearchPane, match, out startCell, out int endCell))
+
+        {
+
+            _searchHighlightStartCellIndex = startCell;
+
+            _searchHighlightEndCellIndex = endCell;
+
+            _searchHighlightOnLeftPane = SearchPane == HexSearchPane.PaneA;
+
+            OnPropertyChanged(nameof(SearchHighlightStartCellIndex));
+
+            OnPropertyChanged(nameof(SearchHighlightEndCellIndex));
+
+            OnPropertyChanged(nameof(SearchHighlightOnLeftPane));
+
+            SearchHighlightChanged?.Invoke();
+
+        }
+
+
+
+        string paneLabel = SearchPane == HexSearchPane.PaneA ? "A" : "B";
+
+        SearchNavigatorText =
+
+            $"Match {_currentSearchIndex + 1}/{_searchMatches.Count} in pane {paneLabel} at 0x{match.FileOffset:X8}";
+
+        ScrollToRowRequested?.Invoke(visualRow);
+
+    }
+
+
+
+    private string BuildSearchKey() =>
+
+        $"{SearchPane}|{SearchMode}|{SearchText}";
+
+
+
+    private void ClearSearchState()
+
+    {
+
+        _searchMatches = new List<HexSearchMatch>();
+
+        _currentSearchIndex = -1;
+
+        _lastSearchKey = string.Empty;
+
+        SearchNavigatorText = string.Empty;
+
+        ClearSearchHighlight();
+
+        OnPropertyChanged(nameof(CanSearchNavigate));
+
+    }
+
+
+
+    private void ClearSearchHighlight()
+
+    {
+
+        _searchHighlightStartCellIndex = null;
+
+        _searchHighlightEndCellIndex = null;
+
+        OnPropertyChanged(nameof(SearchHighlightStartCellIndex));
+
+        OnPropertyChanged(nameof(SearchHighlightEndCellIndex));
+
+        SearchHighlightChanged?.Invoke();
 
     }
 

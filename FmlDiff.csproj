@@ -19,6 +19,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="test/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>FmlDiff.SmokeTests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.7" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.7" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.7" />

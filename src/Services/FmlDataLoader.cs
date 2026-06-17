@@ -36,7 +36,7 @@ public sealed class FmlDataLoader
     private static byte[] LoadDecodedBytes(string fullInputPath, IProgress<double> progress)
     {
         string ext = Path.GetExtension(fullInputPath);
-        byte[] fileBytes = File.ReadAllBytes(fullInputPath);
+        byte[] fileBytes = ReadFileBytes(fullInputPath);
         progress?.Report(0.05);
 
         if (string.Equals(ext, ".fml", StringComparison.OrdinalIgnoreCase))
@@ -46,6 +46,41 @@ public sealed class FmlDataLoader
 
         progress?.Report(0.90);
         return fileBytes;
+    }
+
+    private static byte[] ReadFileBytes(string fullInputPath)
+    {
+        using FileStream stream = new FileStream(
+            fullInputPath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            bufferSize: 1024 * 1024,
+            options: FileOptions.SequentialScan);
+
+        if (stream.Length == 0)
+            return Array.Empty<byte>();
+
+        if (stream.Length > int.MaxValue)
+            throw new InvalidOperationException($"File is too large: {fullInputPath}");
+
+        byte[] buffer = new byte[(int)stream.Length];
+        int offset = 0;
+        int remaining = buffer.Length;
+        while (remaining > 0)
+        {
+            int read = stream.Read(buffer, offset, remaining);
+            if (read == 0)
+            {
+                throw new EndOfStreamException(
+                    $"Unexpected EOF reading file '{fullInputPath}' (read {offset} of {buffer.Length} bytes).");
+            }
+
+            offset += read;
+            remaining -= read;
+        }
+
+        return buffer;
     }
 
     private static IProgress<double> MapProgress(IProgress<double> progress, double start, double end)
