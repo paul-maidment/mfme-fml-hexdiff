@@ -157,7 +157,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public bool CanRun => !IsBusy;
 
-    public bool CanNavigate => !IsBusy && _alignedDiffRows.Count > 1;
+    public bool CanNavigate => !IsBusy && _alignedDiffRows.Count > 0;
 
 
 
@@ -191,7 +191,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
         get => _selectedRowIndex;
 
-        private set => SetProperty(ref _selectedRowIndex, value);
+        set => SetProperty(ref _selectedRowIndex, value);
 
     }
 
@@ -250,31 +250,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
 
             DiffComputationResult result = await Task.Run(() =>
-
             {
+                HexDiffPresentation presentation;
 
-                byte[] leftBytes = LoadFileWithProgress(pathA, progress, fileStart: 0, fileEnd: 45, "A");
+                if (string.Equals(pathA, pathB, StringComparison.OrdinalIgnoreCase))
+                {
+                    byte[] sharedBytes = LoadFileWithProgress(pathA, progress, fileStart: 0, fileEnd: 90, "A");
+                    progress.Report((92, "Computing diff alignment..."));
+                    presentation = HexDiffPresentation.BuildIdentical(sharedBytes);
+                }
+                else
+                {
+                    byte[] leftBytes = null;
+                    byte[] rightBytes = null;
 
-                byte[] rightBytes = LoadFileWithProgress(pathB, progress, fileStart: 45, fileEnd: 90, "B");
+                    System.Threading.Tasks.Parallel.Invoke(
+                        () => leftBytes = LoadFileWithProgress(pathA, progress, fileStart: 0, fileEnd: 45, "A"),
+                        () => rightBytes = LoadFileWithProgress(pathB, progress, fileStart: 45, fileEnd: 90, "B"));
 
-
-
-                progress.Report((92, "Computing diff alignment..."));
-
-                DiffLayoutResult aligned = _diffEngine.BuildAligned(leftBytes, rightBytes, LookaheadWindow);
-
-
-
-                progress.Report((96, "Preparing display..."));
-
-                HexDiffPresentation presentation = HexDiffPresentation.Build(aligned.LeftCells, aligned.RightCells);
-
-
+                    progress.Report((92, "Computing diff alignment..."));
+                    presentation = _diffEngine.BuildPresentation(leftBytes, rightBytes, LookaheadWindow);
+                }
 
                 progress.Report((100, "Finalizing..."));
-
                 return new DiffComputationResult(presentation);
-
             });
 
 

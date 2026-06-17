@@ -78,11 +78,17 @@ namespace FmlDiff.Decryption
         {
             byte[] aesKey = Ripemd128.ComputeHash(Encoding.ASCII.GetBytes(password));
             byte[] iv = EncryptEcb(aesKey, s_allFfBlock);
+            uint initialDsize = BitConverter.ToUInt32(fmlBytes, 132);
 
-            using (MemoryStream output = new MemoryStream())
+            using (Aes aes = Aes.Create())
+            using (MemoryStream output = new MemoryStream(Math.Max((int)initialDsize, 4096)))
             {
+                aes.Mode = CipherMode.ECB;
+                aes.Padding = PaddingMode.None;
+                aes.Key = aesKey;
+
                 uint csize = BitConverter.ToUInt32(fmlBytes, 128);
-                uint dsize = BitConverter.ToUInt32(fmlBytes, 132);
+                uint dsize = initialDsize;
                 uint expectedCrc32 = BitConverter.ToUInt32(fmlBytes, 136);
                 int position = 144;
                 int chunkIndex = 0;
@@ -92,22 +98,21 @@ namespace FmlDiff.Decryption
                 while (position < fmlBytes.Length - 4)
                 {
                     int ctLen = (int)Math.Min(csize, (uint)(fmlBytes.Length - position));
-                    byte[] ct = new byte[ctLen];
-                    Array.Copy(fmlBytes, position, ct, 0, ctLen);
+                    byte[] compressed = EclDecrypt(fmlBytes, position, ctLen, aes, iv);
+                    int writeLen = ZlibDecompressTo(output, compressed, dsize);
 
-                    byte[] compressed = EclDecrypt(ct, aesKey, iv);
-                    byte[] decompressed = ZlibDecompress(compressed);
+                    if (writeLen > 0)
+                    {
+                        long chunkStart = output.Length - writeLen;
+                        if (output.TryGetBuffer(out ArraySegment<byte> segment))
+                        {
+                            uint actualCrc32 = ComputeChunkCrc32(segment.Array, (int)chunkStart + segment.Offset, writeLen);
+                            if (actualCrc32 != expectedCrc32)
+                                Console.Error.WriteLine($"WARNING: chunk {chunkIndex} CRC32 mismatch (expected 0x{expectedCrc32:X8}, computed 0x{actualCrc32:X8})");
+                        }
+                    }
 
-                    int writeLen = decompressed.Length > dsize ? (int)dsize : decompressed.Length;
-                    byte[] chunkOutput = new byte[writeLen];
-                    Array.Copy(decompressed, chunkOutput, writeLen);
-                    output.Write(chunkOutput, 0, writeLen);
-
-                    uint actualCrc32 = ComputeChunkCrc32(chunkOutput);
-                    if (actualCrc32 != expectedCrc32)
-                        Console.Error.WriteLine($"WARNING: chunk {chunkIndex} CRC32 mismatch (expected 0x{expectedCrc32:X8}, computed 0x{actualCrc32:X8})");
-
-                    position += (int)csize;
+                    position += ctLen;
 
                     if (position + 16 > fmlBytes.Length - 4)
                         break;
@@ -155,79 +160,88 @@ namespace FmlDiff.Decryption
             }
         }
 
-        private static byte[] EclDecrypt(byte[] ct, byte[] key, byte[] iv)
+        private static byte[] EclDecrypt(byte[] source, int offset, int length, Aes aes, byte[] iv)
         {
             byte[] fb_d = new byte[16];
             byte[] fb_b = new byte[16];
             Array.Copy(iv, fb_d, 16);
 
-            int fullBlocks = ct.Length - (ct.Length % 16);
-            byte[] result = new byte[fullBlocks + (ct.Length % 16)];
+            int fullBlocks = length - (length % 16);
+            byte[] result = new byte[fullBlocks + (length % 16)];
             int resultPos = 0;
 
-            using (Aes aes = Aes.Create())
+            using (ICryptoTransform decryptor = aes.CreateDecryptor())
+            using (ICryptoTransform encryptor = aes.CreateEncryptor())
             {
-                aes.Mode = CipherMode.ECB;
-                aes.Padding = PaddingMode.None;
-                aes.Key = key;
-
-                using (ICryptoTransform decryptor = aes.CreateDecryptor())
-                using (ICryptoTransform encryptor = aes.CreateEncryptor())
+                for (int i = 0; i < fullBlocks; i += 16)
                 {
-                    for (int i = 0; i < fullBlocks; i += 16)
-                    {
-                        for (int j = 0; j < 16; j++)
-                            fb_b[j] = (byte)(ct[i + j] ^ fb_d[j]);
+                    int sourceIndex = offset + i;
+                    for (int j = 0; j < 16; j++)
+                        fb_b[j] = (byte)(source[sourceIndex + j] ^ fb_d[j]);
 
-                        byte[] dec = new byte[16];
-                        decryptor.TransformBlock(ct, i, 16, dec, 0);
+                    byte[] dec = new byte[16];
+                    decryptor.TransformBlock(source, sourceIndex, 16, dec, 0);
 
-                        for (int j = 0; j < 16; j++)
-                            result[resultPos++] = (byte)(dec[j] ^ fb_d[j]);
+                    for (int j = 0; j < 16; j++)
+                        result[resultPos++] = (byte)(dec[j] ^ fb_d[j]);
 
-                        byte[] tmp = fb_d;
-                        fb_d = fb_b;
-                        fb_b = tmp;
-                    }
+                    byte[] tmp = fb_d;
+                    fb_d = fb_b;
+                    fb_b = tmp;
+                }
 
-                    int rem = ct.Length % 16;
-                    if (rem > 0)
-                    {
-                        byte[] keystream = new byte[16];
-                        encryptor.TransformBlock(fb_d, 0, 16, keystream, 0);
+                int rem = length % 16;
+                if (rem > 0)
+                {
+                    byte[] keystream = new byte[16];
+                    encryptor.TransformBlock(fb_d, 0, 16, keystream, 0);
 
-                        for (int j = 0; j < rem; j++)
-                            result[resultPos++] = (byte)(ct[fullBlocks + j] ^ keystream[j]);
-                    }
+                    int tailStart = offset + fullBlocks;
+                    for (int j = 0; j < rem; j++)
+                        result[resultPos++] = (byte)(source[tailStart + j] ^ keystream[j]);
                 }
             }
 
             return result;
         }
 
-        private static byte[] ZlibDecompress(byte[] data)
+        private static int ZlibDecompressTo(MemoryStream output, byte[] compressed, uint maxOutputSize)
         {
-            using (MemoryStream output = new MemoryStream())
+            long startLength = output.Length;
+            using (MemoryStream compressedStream = new MemoryStream(compressed, writable: false))
+            using (ZLibStream zlib = new ZLibStream(compressedStream, CompressionMode.Decompress))
             {
-                using (MemoryStream compressed = new MemoryStream(data))
-                using (ZLibStream zlib = new ZLibStream(compressed, CompressionMode.Decompress))
+                byte[] buffer = new byte[65536];
+                int bytesRead;
+                while ((bytesRead = zlib.Read(buffer, 0, buffer.Length)) > 0)
                 {
-                    byte[] buffer = new byte[65536];
-                    int bytesRead;
-                    while ((bytesRead = zlib.Read(buffer, 0, buffer.Length)) > 0)
+                    int allowed = bytesRead;
+                    if (maxOutputSize > 0)
                     {
-                        output.Write(buffer, 0, bytesRead);
+                        long written = output.Length - startLength;
+                        long remaining = maxOutputSize - written;
+                        if (remaining <= 0)
+                            break;
+
+                        allowed = (int)Math.Min(remaining, bytesRead);
                     }
+
+                    output.Write(buffer, 0, allowed);
+                    if (maxOutputSize > 0 && output.Length - startLength >= maxOutputSize)
+                        break;
                 }
-                return output.ToArray();
             }
+
+            return checked((int)(output.Length - startLength));
         }
 
-        private static uint ComputeChunkCrc32(byte[] decompressedData)
+        private static uint ComputeChunkCrc32(byte[] buffer, int offset, int length)
         {
             uint crc = 0;
-            foreach (byte b in decompressedData)
+            int end = offset + length;
+            for (int i = offset; i < end; i++)
             {
+                byte b = buffer[i];
                 crc ^= b;
                 for (int j = 0; j < 8; j++)
                     crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;

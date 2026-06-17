@@ -17,6 +17,7 @@ public sealed class HexDumpRowControl : UserControl
     private readonly Border[] _hexBorders = new Border[16];
     private readonly TextBlock[] _hexTexts = new TextBlock[16];
     private readonly TextBlock _asciiText;
+    private readonly Border _rowBorder;
 
     public HexDumpRowControl()
     {
@@ -78,13 +79,15 @@ public sealed class HexDumpRowControl : UserControl
         grid.Children.Add(hexPanel);
         grid.Children.Add(_asciiText);
 
-        Content = new Border
+        _rowBorder = new Border
         {
             Background = HexDiffTheme.RowBackground,
             Padding = new Thickness(6, 1),
             Height = 24,
             Child = grid
         };
+
+        Content = _rowBorder;
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -99,7 +102,10 @@ public sealed class HexDumpRowControl : UserControl
         RefreshRow();
     }
 
-    public void RefreshRow() => UpdateRow();
+    public void RefreshRow()
+    {
+        UpdateRow();
+    }
 
     private void UpdateRow()
     {
@@ -142,6 +148,27 @@ public sealed class HexDumpRowControl : UserControl
         }
 
         _asciiText.Text = ascii.ToString();
+        UpdateSelectionVisual();
+    }
+
+    private void UpdateSelectionVisual()
+    {
+        ListBox listBox = this.FindAncestorOfType<ListBox>();
+        int rowIndex = DataContext is int index ? index : -1;
+        bool isSelected = listBox != null && rowIndex >= 0 && listBox.SelectedIndex == rowIndex;
+
+        if (isSelected)
+        {
+            _rowBorder.Background = HexDiffTheme.SelectedRowBackground;
+            _rowBorder.BorderBrush = HexDiffTheme.SelectedRowAccent;
+            _rowBorder.BorderThickness = new Thickness(3, 1, 1, 1);
+        }
+        else
+        {
+            _rowBorder.Background = HexDiffTheme.RowBackground;
+            _rowBorder.BorderBrush = null;
+            _rowBorder.BorderThickness = new Thickness(0);
+        }
     }
 
     private bool TryGetRowContext(out HexDiffPresentation presentation, out int rowIndex, out bool isLeft)
@@ -173,6 +200,8 @@ public sealed class HexDumpRowControl : UserControl
             _hexBorders[i].Background = Brushes.Transparent;
             _hexTexts[i].Foreground = HexDiffTheme.DefaultText;
         }
+
+        UpdateSelectionVisual();
     }
 
     private static string[] CreateHexTable()
@@ -190,6 +219,8 @@ public sealed class HexDumpRowControl : UserControl
 internal static class HexDiffTheme
 {
     public static readonly IBrush RowBackground = new SolidColorBrush(Color.Parse("#1F2636"));
+    public static readonly IBrush SelectedRowBackground = new SolidColorBrush(Color.Parse("#2E4A78"));
+    public static readonly IBrush SelectedRowAccent = new SolidColorBrush(Color.Parse("#7DD3FC"));
     public static readonly IBrush DefaultText = new SolidColorBrush(Color.Parse("#E8EAF0"));
     public static readonly IBrush AsciiText = new SolidColorBrush(Color.Parse("#D0D6E1"));
     public static readonly IBrush MismatchBackground = new SolidColorBrush(Color.Parse("#B54545"));

@@ -52,42 +52,87 @@ namespace MfmeFmlDecoder.Decoder
 
         private byte[] GetCleanedBytesWithoutTag(Stream inputStream, uint offset, uint tagToRemove)
         {
-            byte[] prefixBytes;
-            List<TlvRecord> records;
-            byte[] componentsBytes;
-            ReadRecords(inputStream, offset, out prefixBytes, out records, out componentsBytes);
-
             using var output = new MemoryStream();
             using var writer = new BinaryWriter(output);
+            WriteFilteredRecords(inputStream, offset, tagToRemove, writer);
+            return output.ToArray();
+        }
 
-            if (prefixBytes.Length > 0)
+        private static void WriteFilteredRecords(Stream inputStream, uint offset, uint tagToRemove, BinaryWriter writer)
+        {
+            bool foundTerminationTag = false;
+
+            using BinaryReader reader = new BinaryReader(inputStream, System.Text.Encoding.UTF8, leaveOpen: true);
+
+            if (offset > inputStream.Length)
             {
+                throw new InvalidOperationException(
+                    $"Offset 0x{offset:X} is beyond file length 0x{inputStream.Length:X}."
+                );
+            }
+
+            if (offset > 0)
+            {
+                byte[] prefixBytes = reader.ReadBytes(checked((int)offset));
                 writer.Write(prefixBytes);
             }
 
-            foreach (TlvRecord record in records)
+            while (inputStream.Position < inputStream.Length)
             {
-                if (record.Tag == tagToRemove)
+                long recordStartOffset = inputStream.Position;
+                uint tag = reader.ReadUInt32();
+                uint length = reader.ReadUInt32();
+                byte[] values = reader.ReadBytes(checked((int)length));
+                if (values.Length != length)
                 {
-                    continue;
+                    throw new EndOfStreamException(
+                        $"Unexpected EOF reading tag 0x{tag:X2} at offset 0x{recordStartOffset:X8}. " +
+                        $"Expected {length} bytes but only {values.Length} bytes were read."
+                    );
                 }
 
-                writer.Write(record.Tag);
-                writer.Write((uint)record.Value.Length);
-                writer.Write(record.Value);
-
-                if (record.TrailingBytes.Length > 0)
+                byte[] trailingBytes = Array.Empty<byte>();
+                if (tag == TagWithExtraData)
                 {
-                    writer.Write(record.TrailingBytes);
+                    trailingBytes = reader.ReadBytes(ExtraDataLengthAfterTag43);
+                    if (trailingBytes.Length != ExtraDataLengthAfterTag43)
+                    {
+                        throw new EndOfStreamException(
+                            $"Unexpected EOF reading trailing bytes for tag 0x43 at offset 0x{recordStartOffset:X8}."
+                        );
+                    }
+                }
+
+                if (tag != tagToRemove)
+                {
+                    writer.Write(tag);
+                    writer.Write(length);
+                    writer.Write(values);
+
+                    if (trailingBytes.Length > 0)
+                        writer.Write(trailingBytes);
+                }
+
+                if (tag == TlvTerminationTag)
+                {
+                    foundTerminationTag = true;
+                    break;
                 }
             }
 
-            if (componentsBytes.Length > 0)
+            if (!foundTerminationTag)
             {
+                throw new InvalidOperationException(
+                    "Could not locate TLV termination tag 0xFFFFFFFF; cannot identify components section."
+                );
+            }
+
+            long remaining = inputStream.Length - inputStream.Position;
+            if (remaining > 0)
+            {
+                byte[] componentsBytes = reader.ReadBytes(checked((int)remaining));
                 writer.Write(componentsBytes);
             }
-
-            return output.ToArray();
         }
 
         public TlvWalkResult WriteCleanedFileWithoutTag(string inputDatPath, string outputPath, uint offset, uint tagToRemove)

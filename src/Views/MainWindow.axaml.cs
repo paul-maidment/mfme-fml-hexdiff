@@ -58,6 +58,15 @@ public partial class MainWindow : Window
         {
             _rightScrollViewer.ScrollChanged += RightScrollChanged;
         }
+
+        LeftListBox.SelectionChanged += OnListSelectionChanged;
+        RightListBox.SelectionChanged += OnListSelectionChanged;
+    }
+
+    private void OnListSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        HexDiffPaneProperties.RefreshVisibleRows(LeftListBox);
+        HexDiffPaneProperties.RefreshVisibleRows(RightListBox);
     }
 
     private async void OpenFileAClick(object sender, RoutedEventArgs e)
@@ -95,26 +104,41 @@ public partial class MainWindow : Window
 
     private void OnScrollToRowRequested(int row)
     {
-        TryScrollToRow(row, remainingAttempts: 8);
+        TryScrollToRow(row, remainingAttempts: 12);
     }
 
     private void TryScrollToRow(int row, int remainingAttempts)
     {
         Dispatcher.UIThread.Post(() =>
         {
-            if (row < 0 || row >= LeftListBox.ItemCount || row >= RightListBox.ItemCount)
+            int rowCount = ViewModel.RowIndices.Count;
+            if (row < 0 || row >= rowCount || _leftScrollViewer == null || _rightScrollViewer == null)
             {
                 if (remainingAttempts > 0)
                 {
                     TryScrollToRow(row, remainingAttempts - 1);
                 }
+
                 return;
             }
 
             _isSyncingScroll = true;
-            LeftListBox.ScrollIntoView(LeftListBox.Items[row]);
-            RightListBox.ScrollIntoView(RightListBox.Items[row]);
-            _isSyncingScroll = false;
+            try
+            {
+                LeftListBox.SelectedIndex = row;
+                RightListBox.SelectedIndex = row;
+
+                double offsetY = row * RowHeight;
+                _leftScrollViewer.Offset = new Vector(_leftScrollViewer.Offset.X, offsetY);
+                _rightScrollViewer.Offset = new Vector(_rightScrollViewer.Offset.X, offsetY);
+            }
+            finally
+            {
+                _isSyncingScroll = false;
+            }
+
+            HexDiffPaneProperties.RefreshVisibleRows(LeftListBox);
+            HexDiffPaneProperties.RefreshVisibleRows(RightListBox);
         }, DispatcherPriority.Loaded);
     }
 

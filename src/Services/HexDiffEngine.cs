@@ -37,11 +37,17 @@ public sealed class HexDiffEngine
     // Memory usage scales O(D²): at cap=2000 the trace takes ~8 MB.
     private const int MaxMyersEditDistance = 2000;
 
-    public DiffLayoutResult BuildAligned(IReadOnlyList<byte> leftBytes, IReadOnlyList<byte> rightBytes, int lookaheadWindow)
+    public DiffLayoutResult BuildAligned(byte[] leftBytes, byte[] rightBytes, int lookaheadWindow)
     {
         if (leftBytes == null) throw new ArgumentNullException(nameof(leftBytes));
         if (rightBytes == null) throw new ArgumentNullException(nameof(rightBytes));
         if (lookaheadWindow < 0) throw new ArgumentOutOfRangeException(nameof(lookaheadWindow));
+
+        if (leftBytes.Length == rightBytes.Length &&
+            leftBytes.AsSpan().SequenceEqual(rightBytes))
+        {
+            return BuildIdenticalLayout(leftBytes);
+        }
 
         List<DiffByteCell> leftCells;
         List<DiffByteCell> rightCells;
@@ -52,20 +58,62 @@ public sealed class HexDiffEngine
 
         if (myersSucceeded)
         {
-            leftCells = new List<DiffByteCell>(editScript.Count);
-            rightCells = new List<DiffByteCell>(editScript.Count);
-            BuildCellsFromEditScript(editScript, leftCells, rightCells, insertions);
+            BuildCellsFromEditScript(editScript, out leftCells, out rightCells, insertions);
         }
         else
         {
-            // Edit distance exceeded MaxMyersEditDistance — fall back to bidirectional greedy.
-            leftCells = new List<DiffByteCell>(leftBytes.Count + rightBytes.Count);
-            rightCells = new List<DiffByteCell>(leftBytes.Count + rightBytes.Count);
+            leftCells = new List<DiffByteCell>(leftBytes.Length + rightBytes.Length);
+            rightCells = new List<DiffByteCell>(leftBytes.Length + rightBytes.Length);
             BuildCellsGreedy(leftBytes, rightBytes, lookaheadWindow,
                 leftCells, rightCells, insertions, out unresolvedMismatches);
         }
 
         return new DiffLayoutResult(leftCells, rightCells, insertions, unresolvedMismatches);
+    }
+
+    public HexDiffPresentation BuildPresentation(byte[] leftBytes, byte[] rightBytes, int lookaheadWindow)
+    {
+        if (leftBytes == null) throw new ArgumentNullException(nameof(leftBytes));
+        if (rightBytes == null) throw new ArgumentNullException(nameof(rightBytes));
+
+        if (leftBytes.Length == rightBytes.Length &&
+            leftBytes.AsSpan().SequenceEqual(rightBytes))
+        {
+            return HexDiffPresentation.BuildIdentical(leftBytes);
+        }
+
+        DiffLayoutResult aligned = BuildAligned(leftBytes, rightBytes, lookaheadWindow);
+        return HexDiffPresentation.BuildFromCellArrays(
+            ToCellArray(aligned.LeftCells),
+            ToCellArray(aligned.RightCells));
+    }
+
+    private static DiffByteCell[] ToCellArray(IReadOnlyList<DiffByteCell> cells)
+    {
+        if (cells is DiffByteCell[] array)
+            return array;
+
+        var copy = new DiffByteCell[cells.Count];
+        for (int i = 0; i < cells.Count; i++)
+            copy[i] = cells[i];
+
+        return copy;
+    }
+
+    private static DiffLayoutResult BuildIdenticalLayout(byte[] bytes)
+    {
+        int length = bytes.Length;
+        var leftCells = new DiffByteCell[length];
+        var rightCells = new DiffByteCell[length];
+
+        for (int i = 0; i < length; i++)
+        {
+            DiffByteCell cell = DiffByteCell.Normal(bytes[i]);
+            leftCells[i] = cell;
+            rightCells[i] = cell;
+        }
+
+        return new DiffLayoutResult(leftCells, rightCells, Array.Empty<InsertionRecord>(), 0);
     }
 
     public DiffLayoutResult BuildRaw(IReadOnlyList<byte> leftBytes, IReadOnlyList<byte> rightBytes)
@@ -99,9 +147,9 @@ public sealed class HexDiffEngine
     //   The trace (compact array of furthest-x per diagonal, one snapshot per
     //   step) lets us backtrack the optimal path to produce the edit script.
     // -------------------------------------------------------------------------
-    private static bool TryMyersDiff(IReadOnlyList<byte> a, IReadOnlyList<byte> b, out List<EditOp> result)
+    private static bool TryMyersDiff(byte[] a, byte[] b, out List<EditOp> result)
     {
-        int n = a.Count, m = b.Count;
+        int n = a.Length, m = b.Length;
 
         if (n == 0)
         {
@@ -172,7 +220,7 @@ public sealed class HexDiffEngine
     }
 
     private static List<EditOp> BuildEditScript(
-        IReadOnlyList<byte> a, IReadOnlyList<byte> b,
+        byte[] a, byte[] b,
         int[][] trace, int foundD, int n, int m)
     {
         var script = new List<EditOp>(n + m);
@@ -241,10 +289,12 @@ public sealed class HexDiffEngine
     // -------------------------------------------------------------------------
     private static void BuildCellsFromEditScript(
         List<EditOp> ops,
-        List<DiffByteCell> leftCells,
-        List<DiffByteCell> rightCells,
+        out List<DiffByteCell> leftCells,
+        out List<DiffByteCell> rightCells,
         List<InsertionRecord> insertions)
     {
+        leftCells = new List<DiffByteCell>(ops.Count);
+        rightCells = new List<DiffByteCell>(ops.Count);
         int leftFileIndex = 0;
         int rightFileIndex = 0;
         int insertGroupStart = -1;
@@ -297,8 +347,8 @@ public sealed class HexDiffEngine
     // Bidirectional greedy resync — used as fallback when D > MaxMyersEditDistance.
     // -------------------------------------------------------------------------
     private static void BuildCellsGreedy(
-        IReadOnlyList<byte> leftBytes,
-        IReadOnlyList<byte> rightBytes,
+        byte[] leftBytes,
+        byte[] rightBytes,
         int lookaheadWindow,
         List<DiffByteCell> leftCells,
         List<DiffByteCell> rightCells,
@@ -308,12 +358,12 @@ public sealed class HexDiffEngine
         int leftIndex = 0, rightIndex = 0;
         unresolvedMismatches = 0;
 
-        while (leftIndex < leftBytes.Count || rightIndex < rightBytes.Count)
+        while (leftIndex < leftBytes.Length || rightIndex < rightBytes.Length)
         {
-            if (leftIndex >= leftBytes.Count)
+            if (leftIndex >= leftBytes.Length)
             {
                 int start = rightIndex;
-                int remaining = rightBytes.Count - rightIndex;
+                int remaining = rightBytes.Length - rightIndex;
                 byte[] tail = new byte[remaining];
                 for (int i = 0; i < remaining; i++)
                 {
@@ -327,7 +377,7 @@ public sealed class HexDiffEngine
                 continue;
             }
 
-            if (rightIndex >= rightBytes.Count)
+            if (rightIndex >= rightBytes.Length)
             {
                 byte a = leftBytes[leftIndex++];
                 leftCells.Add(DiffByteCell.Normal(a));
@@ -383,7 +433,7 @@ public sealed class HexDiffEngine
     }
 
     private static int FindResyncDistance(
-        IReadOnlyList<byte> searchIn,
+        byte[] searchIn,
         int searchFrom,
         byte target,
         int lookaheadWindow)
@@ -391,7 +441,7 @@ public sealed class HexDiffEngine
         if (lookaheadWindow <= 0)
             return -1;
 
-        int maxDistance = Math.Min(lookaheadWindow, searchIn.Count - searchFrom - 1);
+        int maxDistance = Math.Min(lookaheadWindow, searchIn.Length - searchFrom - 1);
         for (int distance = 1; distance <= maxDistance; distance++)
         {
             if (searchIn[searchFrom + distance] == target)

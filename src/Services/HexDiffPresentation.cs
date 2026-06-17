@@ -32,8 +32,31 @@ public sealed class HexDiffPresentation
         if (leftCells == null) throw new ArgumentNullException(nameof(leftCells));
         if (rightCells == null) throw new ArgumentNullException(nameof(rightCells));
 
+        return BuildFromCellArrays(ToCellArray(leftCells), ToCellArray(rightCells));
+    }
+
+    public static HexDiffPresentation BuildIdentical(byte[] bytes)
+    {
+        if (bytes == null) throw new ArgumentNullException(nameof(bytes));
+
+        int length = bytes.Length;
+        var leftCells = new DiffByteCell[length];
+        var rightCells = new DiffByteCell[length];
+
+        for (int i = 0; i < length; i++)
+        {
+            DiffByteCell cell = DiffByteCell.Normal(bytes[i]);
+            leftCells[i] = cell;
+            rightCells[i] = cell;
+        }
+
+        return BuildIdenticalOffsets(leftCells, rightCells);
+    }
+
+    internal static HexDiffPresentation BuildFromCellArrays(DiffByteCell[] leftCells, DiffByteCell[] rightCells)
+    {
         const int bytesPerRow = 16;
-        int totalCells = Math.Max(leftCells.Count, rightCells.Count);
+        int totalCells = Math.Max(leftCells.Length, rightCells.Length);
         int rowCount = (totalCells + bytesPerRow - 1) / bytesPerRow;
 
         var leftRowOffsets = new int[rowCount];
@@ -53,8 +76,8 @@ public sealed class HexDiffPresentation
             {
                 int cellIndex = rowIndex * bytesPerRow + i;
 
-                DiffByteCell lc = cellIndex < leftCells.Count ? leftCells[cellIndex] : DiffByteCell.Empty();
-                DiffByteCell rc = cellIndex < rightCells.Count ? rightCells[cellIndex] : DiffByteCell.Empty();
+                DiffByteCell lc = cellIndex < leftCells.Length ? leftCells[cellIndex] : DiffByteCell.Empty();
+                DiffByteCell rc = cellIndex < rightCells.Length ? rightCells[cellIndex] : DiffByteCell.Empty();
 
                 bool leftIsGap = lc.Kind is ByteCellKind.Gap or ByteCellKind.Empty;
                 bool rightIsGap = rc.Kind is ByteCellKind.Gap or ByteCellKind.Empty;
@@ -80,12 +103,28 @@ public sealed class HexDiffPresentation
                 diffRows.Add((rowIndex, leftRowOffsets[rowIndex]));
         }
 
+        return new HexDiffPresentation(leftCells, rightCells, leftRowOffsets, rightRowOffsets, diffRows);
+    }
+
+    private static HexDiffPresentation BuildIdenticalOffsets(DiffByteCell[] leftCells, DiffByteCell[] rightCells)
+    {
+        int rowCount = (leftCells.Length + 15) / 16;
+        var leftRowOffsets = new int[rowCount];
+        var rightRowOffsets = new int[rowCount];
+
+        for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
+        {
+            int offset = rowIndex * 16;
+            leftRowOffsets[rowIndex] = offset;
+            rightRowOffsets[rowIndex] = offset;
+        }
+
         return new HexDiffPresentation(
-            ToCellArray(leftCells),
-            ToCellArray(rightCells),
+            leftCells,
+            rightCells,
             leftRowOffsets,
             rightRowOffsets,
-            diffRows);
+            new List<(int, int)>());
     }
 
     private static DiffByteCell[] ToCellArray(IReadOnlyList<DiffByteCell> cells)

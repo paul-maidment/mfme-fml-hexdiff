@@ -32,7 +32,7 @@ public static class HexDiffPaneProperties
         PresentationProperty.Changed.AddClassHandler<ListBox>((listBox, _) => RefreshVisibleRows(listBox));
     }
 
-    private static void RefreshVisibleRows(ListBox listBox)
+    internal static void RefreshVisibleRows(ListBox listBox)
     {
         if (listBox == null)
             return;
