@@ -8,7 +8,7 @@ namespace FmlDiff.Decryption
 {
     internal static class FmlDecryptor
     {
-        public static byte[] Decrypt(byte[] fmlBytes)
+        public static byte[] Decrypt(byte[] fmlBytes, IProgress<double> progress = null)
         {
             if (fmlBytes == null || fmlBytes.Length < 148)
                 throw new ArgumentException("FML data too short");
@@ -17,11 +17,12 @@ namespace FmlDiff.Decryption
 
             try
             {
-                return DecryptAllChunks(fmlBytes, password);
+                return DecryptAllChunks(fmlBytes, password, progress);
             }
             catch (Exception)
             {
-                return DecryptAllChunks(fmlBytes, AltPassword);
+                progress?.Report(0);
+                return DecryptAllChunks(fmlBytes, AltPassword, progress);
             }
         }
 
@@ -73,7 +74,7 @@ namespace FmlDiff.Decryption
             return lastNextOff;
         }
 
-        private static byte[] DecryptAllChunks(byte[] fmlBytes, string password)
+        private static byte[] DecryptAllChunks(byte[] fmlBytes, string password, IProgress<double> progress)
         {
             byte[] aesKey = Ripemd128.ComputeHash(Encoding.ASCII.GetBytes(password));
             byte[] iv = EncryptEcb(aesKey, s_allFfBlock);
@@ -85,6 +86,8 @@ namespace FmlDiff.Decryption
                 uint expectedCrc32 = BitConverter.ToUInt32(fmlBytes, 136);
                 int position = 144;
                 int chunkIndex = 0;
+                int payloadEnd = Math.Max(fmlBytes.Length - 4, 144);
+                int payloadSpan = Math.Max(payloadEnd - 144, 1);
 
                 while (position < fmlBytes.Length - 4)
                 {
@@ -114,8 +117,11 @@ namespace FmlDiff.Decryption
                     expectedCrc32 = BitConverter.ToUInt32(fmlBytes, position + 8);
                     position += 16;
                     chunkIndex++;
+
+                    progress?.Report(Math.Min(1.0, (double)(position - 144) / payloadSpan));
                 }
 
+                progress?.Report(1.0);
                 return output.ToArray();
             }
         }
